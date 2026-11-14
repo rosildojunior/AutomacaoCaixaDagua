@@ -3,7 +3,15 @@
 Monitora o nível da caixa d'água com um sensor ultrassônico, mostra em um display TFT
 e liga/desliga a bomba por um relé Wi-Fi (histerese: liga em nível baixo, desliga ao encher).
 
-## Materiais
+> Lista completa de materiais e caixas: [docs/MATERIAIS_E_CAIXAS.md](docs/MATERIAIS_E_CAIXAS.md)
+
+## IHM no PC
+Abra `ihm/index.html` no navegador, informe o IP do ESP32 e clique em *Conectar* (ou marque *Modo demo*).
+Telas: Painel (nível, tendência), Controle (auto/manual, bomba), Configuração (níveis e calibração) e
+Alarmes e falhas (ativos + histórico). O firmware expõe a API em `/api/status`, `/api/config`, `/api/mode`,
+`/api/pump` e `/api/ack`.
+
+## Materiais (resumo)
 | Item | Observação |
 |---|---|
 | ESP32 DevKit | Wi-Fi integrado |
@@ -29,6 +37,8 @@ TFT: configure o `User_Setup.h` da biblioteca TFT_eSPI. O SCLK padrão (GPIO 18)
 mude o SCLK para o GPIO 14. Na placa CYD isso já vem configurado.
 
 ## Lógica
+(O firmware v2 também tem alarme de relé sem resposta e de nível crítico, e trava a bomba após o tempo máximo até o reconhecimento na IHM.)
+
 - Nível % = (DIST_VAZIA − distância) / (DIST_VAZIA − DIST_CHEIA).
 - Liga a bomba com nível ≤ 25%; desliga com ≥ 98%. Entre os dois, mantém o estado.
 - Proteções: tempo máximo de 60 min de bomba ligada; sem leitura válida do sensor, desliga a bomba e mostra ERRO.

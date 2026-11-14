@@ -1,0 +1,405 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>IHM Caixa d'Água</title>
+<style>
+:root{
+  --bg:#0e1620;--panel:#16212d;--panel2:#1c2937;--line:#2a3a4b;--text:#e8eef4;--muted:#8fa1b3;
+  --ok:#3fb950;--warn:#e3a008;--crit:#f2545b;--water:#2f9bff;--accent:#2f9bff;
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme=dark]){--bg:#eef2f6;--panel:#fff;--panel2:#f3f6f9;--line:#d5dde6;--text:#16212d;--muted:#5d6e80;--ok:#1a7f37;--warn:#9a6700;--crit:#cf222e;--water:#0b79e0;--accent:#0b79e0}
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.4 system-ui,Segoe UI,Roboto,sans-serif}
+header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;padding:12px 20px;background:var(--panel);border-bottom:1px solid var(--line)}
+h1{font-size:18px;margin:0}
+.conn{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+input,select,button{font:inherit;color:inherit}
+input[type=text],input[type=number]{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:7px 9px;width:150px}
+button{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:8px 14px;cursor:pointer}
+button:hover{border-color:var(--accent)}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button.danger{background:var(--crit);border-color:var(--crit);color:#fff}
+button.ok{background:var(--ok);border-color:var(--ok);color:#fff}
+button:disabled{opacity:.45;cursor:not-allowed}
+.badge{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-size:13px;border:1px solid var(--line);background:var(--panel2)}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--muted)}
+.on .dot{background:var(--ok)} .off .dot{background:var(--crit)}
+nav{display:flex;gap:4px;padding:10px 20px 0;border-bottom:1px solid var(--line);overflow-x:auto}
+nav button{border:0;border-bottom:3px solid transparent;border-radius:0;background:none;padding:10px 16px;color:var(--muted)}
+nav button.active{color:var(--text);border-bottom-color:var(--accent)}
+nav .count{background:var(--crit);color:#fff;border-radius:999px;padding:0 7px;font-size:12px;margin-left:6px}
+main{padding:20px;max-width:1100px;margin:0 auto}
+.banner{padding:12px 20px;font-weight:600}
+.banner.crit{background:var(--crit);color:#fff} .banner.warn{background:var(--warn);color:#fff}
+.grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px}
+.card h2{font-size:13px;margin:0 0 12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.big{font-size:56px;font-weight:700;line-height:1}
+.kv{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px dashed var(--line)}
+.kv:last-child{border:0} .kv span:first-child{color:var(--muted)}
+.tank{display:flex;gap:24px;align-items:center;flex-wrap:wrap}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+label.f{display:block;margin-bottom:14px} label.f small{display:block;color:var(--muted)}
+label.f input{margin-top:4px;width:100%;max-width:220px}
+table{width:100%;border-collapse:collapse} th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line);font-size:14px}
+th{color:var(--muted);font-weight:500}
+.alm{display:flex;gap:12px;align-items:flex-start;padding:12px;border-radius:8px;border:1px solid var(--crit);background:color-mix(in srgb,var(--crit) 12%,transparent);margin-bottom:10px}
+.alm.warn{border-color:var(--warn);background:color-mix(in srgb,var(--warn) 12%,transparent)}
+.alm b{display:block}
+.muted{color:var(--muted)} .hidden{display:none!important}
+#msg{min-height:20px;margin-top:8px;font-size:14px}
+.err{color:var(--crit)} .good{color:var(--ok)}
+.demo{border:1px dashed var(--warn);border-radius:10px;padding:12px;margin-top:16px}
+</style>
+</head>
+<body>
+<header>
+  <h1>💧 Caixa d'Água — IHM</h1>
+  <div class="conn">
+    <span id="conn" class="badge off"><span class="dot"></span><span id="connTxt">Desconectado</span></span>
+    <input type="text" id="ip" placeholder="IP do ESP32 (ex.: 192.168.0.60)" style="width:230px" aria-label="IP do ESP32">
+    <button id="btnConn" class="primary">Conectar</button>
+    <label class="badge"><input type="checkbox" id="demo"> Modo demo</label>
+  </div>
+</header>
+<div id="banner" class="banner hidden"></div>
+<nav id="tabs">
+  <button data-tab="painel" class="active">Painel</button>
+  <button data-tab="controle">Controle</button>
+  <button data-tab="config">Configuração</button>
+  <button data-tab="alarmes">Alarmes e falhas <span id="almCount" class="count hidden">0</span></button>
+</nav>
+<main>
+
+<!-- PAINEL -->
+<section id="tab-painel">
+  <div class="grid">
+    <div class="card">
+      <h2>Nível da caixa</h2>
+      <div class="tank">
+        <svg id="tank" width="190" height="230" viewBox="0 0 190 230" role="img" aria-label="Nível da caixa d'água">
+          <defs><clipPath id="clip"><rect x="10" y="10" width="130" height="200" rx="6"/></clipPath></defs>
+          <rect x="10" y="10" width="130" height="200" rx="6" fill="var(--panel2)" stroke="var(--muted)" stroke-width="2"/>
+          <g clip-path="url(#clip)"><rect id="water" x="10" y="210" width="130" height="0" fill="var(--water)" opacity=".85"/></g>
+          <line id="lnLiga" x1="6" x2="144" stroke="var(--warn)" stroke-dasharray="5 4" stroke-width="2"/>
+          <line id="lnDesl" x1="6" x2="144" stroke="var(--ok)" stroke-dasharray="5 4" stroke-width="2"/>
+          <text id="txLiga" x="146" font-size="10" fill="var(--warn)">liga</text>
+          <text id="txDesl" x="146" font-size="10" fill="var(--ok)">desl.</text>
+        </svg>
+        <div>
+          <div class="big" id="nivel">--%</div>
+          <div class="muted" id="dist">distância: -- cm</div>
+          <div style="margin-top:12px" class="row">
+            <span id="bombaBadge" class="badge"><span class="dot"></span><span id="bombaTxt">Bomba: --</span></span>
+            <span id="modoBadge" class="badge">Modo: --</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Tendência (últimos minutos)</h2>
+      <svg id="trend" viewBox="0 0 400 190" width="100%" role="img" aria-label="Gráfico de tendência do nível"></svg>
+    </div>
+    <div class="card">
+      <h2>Sistema</h2>
+      <div class="kv"><span>Controlador</span><span id="sConn">--</span></div>
+      <div class="kv"><span>Relé</span><span id="sRele">--</span></div>
+      <div class="kv"><span>Bomba ligada há</span><span id="sTempo">--</span></div>
+      <div class="kv"><span>Sinal Wi-Fi</span><span id="sRssi">--</span></div>
+      <div class="kv"><span>Tempo ligado (ESP32)</span><span id="sUp">--</span></div>
+    </div>
+    <div class="card">
+      <h2>Últimos eventos</h2>
+      <table><tbody id="evRecent"></tbody></table>
+    </div>
+  </div>
+</section>
+
+<!-- CONTROLE -->
+<section id="tab-controle" class="hidden">
+  <div class="grid">
+    <div class="card">
+      <h2>Modo de operação</h2>
+      <p class="muted">Automático: a bomba liga no nível mínimo e desliga no nível máximo. Manual: você aciona a bomba; ela ainda desliga sozinha no nível máximo.</p>
+      <div class="row">
+        <button id="bAuto">Automático</button>
+        <button id="bManual">Manual</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Acionamento da bomba</h2>
+      <div class="row" style="margin-bottom:10px">
+        <button id="bOn" class="ok">Ligar bomba</button>
+        <button id="bOff" class="danger">Desligar bomba</button>
+      </div>
+      <div id="manualHint" class="muted">Mude para o modo Manual para acionar a bomba.</div>
+      <div id="msg"></div>
+    </div>
+  </div>
+</section>
+
+<!-- CONFIG -->
+<section id="tab-config" class="hidden">
+  <div class="grid">
+    <div class="card">
+      <h2>Níveis de operação</h2>
+      <label class="f">Liga a bomba abaixo de (%)<small>nível mínimo</small><input type="number" id="cLiga" min="1" max="95"></label>
+      <label class="f">Desliga a bomba em (%)<small>nível máximo (use 98 para ficar longe da zona cega do sensor)</small><input type="number" id="cDesl" min="6" max="100"></label>
+      <label class="f">Tempo máximo de bomba ligada (min)<small>acima disso: alarme e bloqueio</small><input type="number" id="cTmax" min="1" max="240"></label>
+    </div>
+    <div class="card">
+      <h2>Calibração do sensor</h2>
+      <label class="f">Distância com a caixa vazia (cm)<small>sensor até o fundo</small><input type="number" id="cVazia" step="0.1"></label>
+      <div class="row" style="margin:-6px 0 14px"><button id="calVazia">Usar leitura atual</button></div>
+      <label class="f">Distância com a caixa cheia (cm)<small>sensor até a água cheia (mínimo 25 cm)</small><input type="number" id="cCheia" step="0.1"></label>
+      <div class="row" style="margin:-6px 0 14px"><button id="calCheia">Usar leitura atual</button></div>
+      <div class="muted">Leitura atual: <b id="cLeit">--</b> cm</div>
+    </div>
+  </div>
+  <div class="row" style="margin-top:16px"><button id="cSave" class="primary">Salvar no controlador</button><button id="cReload">Descartar alterações</button></div>
+  <div id="cMsg" style="margin-top:8px"></div>
+</section>
+
+<!-- ALARMES -->
+<section id="tab-alarmes" class="hidden">
+  <div class="card" style="margin-bottom:16px">
+    <h2>Alarmes ativos</h2>
+    <div id="almList"></div>
+  </div>
+  <div class="card">
+    <h2>Histórico de eventos</h2>
+    <table><thead><tr><th>Quando</th><th>Evento</th></tr></thead><tbody id="evAll"></tbody></table>
+  </div>
+</section>
+
+<div id="demoBox" class="demo hidden">
+  <b>Modo demo</b> <span class="muted">— simulação local, sem ESP32. Velocidade acelerada.</span>
+  <div class="row" style="margin-top:8px">
+    <button id="dSensor">Simular falha do sensor</button>
+    <button id="dRele">Simular falha do relé</button>
+    <button id="dConsumo">Consumir 20% de água</button>
+  </div>
+</div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const ALM = {
+  sensor:  {nome:'Falha do sensor', sev:'crit', desc:'Sem leitura válida do sensor ultrassônico. A bomba foi desligada por segurança. Verifique cabo, sonda e alimentação.'},
+  rele:    {nome:'Falha de comunicação com o relé', sev:'crit', desc:'O controlador não consegue comandar o relé Wi-Fi. Verifique alimentação, Wi-Fi e IP do relé. O estado real da bomba pode ser diferente do mostrado.'},
+  tempo:   {nome:'Tempo máximo da bomba excedido', sev:'crit', desc:'A bomba ficou ligada mais que o limite configurado (falta d\'água na fonte, vazamento ou sensor descalibrado). A bomba está bloqueada até o reconhecimento.'},
+  critico: {nome:'Nível crítico (≤ 10%)', sev:'warn', desc:'A caixa está quase vazia.'}
+};
+
+/* ---------- API real (ESP32) ---------- */
+const Real = {
+  base(){ return 'http://' + $('ip').value.trim(); },
+  async req(path, method='GET'){
+    const ctl = new AbortController(); const t = setTimeout(()=>ctl.abort(), 4000);
+    try{
+      const r = await fetch(this.base()+path, {method, signal:ctl.signal});
+      const j = await r.json().catch(()=>({}));
+      if(!r.ok) throw new Error(j.erro || ('HTTP '+r.status));
+      return j;
+    } finally { clearTimeout(t); }
+  },
+  status(){ return this.req('/api/status'); },
+  setConfig(c){ return this.req('/api/config?'+new URLSearchParams(c), 'POST'); },
+  mode(m){ return this.req('/api/mode?m='+m, 'POST'); },
+  pump(cmd){ return this.req('/api/pump?cmd='+cmd, 'POST'); },
+  ack(){ return this.req('/api/ack', 'POST'); }
+};
+
+/* ---------- API demo (simulador com a mesma lógica do firmware) ---------- */
+const Demo = {
+  cfg:{liga:25,desliga:98,vazia:120,cheia:30,tmax:60}, nivelF:55, bomba:false, modo:'auto',
+  alm:new Set(), ev:[], desejada:false, ini:0, last:Date.now(), up:0, sensorFalha:false, releFalha:false, tempoSim:0, bombaSeg:0,
+  log(m){ this.ev.unshift({t:Math.floor(Date.now()/1000), u:this.up|0, m}); this.ev.length=Math.min(this.ev.length,20); },
+  set(a,on){ if(on&&!this.alm.has(a)){this.alm.add(a);this.log('ALARME: '+ALM[a].nome);} else if(!on&&this.alm.has(a)&&a!=='tempo'){this.alm.delete(a);this.log('Normalizado: '+ALM[a].nome);} },
+  tick(){
+    const now=Date.now(); let dt=Math.min((now-this.last)/1000,3)*5; this.last=now; this.up+=dt/5;
+    if(this.bomba) this.nivelF=Math.min(100,this.nivelF+0.4*dt);
+    this.nivelF=Math.max(0,this.nivelF-0.04*dt);
+    if(this.bomba) this.bombaSeg+=dt;
+    const nivel=this.sensorFalha?-1:Math.round(this.nivelF);
+    this.set('sensor',this.sensorFalha);
+    if(nivel>=0) this.set('critico',nivel<=10);
+    if(this.bomba&&this.bombaSeg>this.cfg.tmax*60) this.set('tempo',true);
+    if(this.alm.has('sensor')||this.alm.has('tempo')) this.desejada=false;
+    else if(nivel>=0){
+      if(this.modo==='auto'&&!this.desejada&&nivel<=this.cfg.liga) this.desejada=true;
+      if(this.desejada&&nivel>=this.cfg.desliga) this.desejada=false;
+    }
+    this.aplicar(); return nivel;
+  },
+  aplicar(){
+    if(this.releFalha){ this.set('rele',true); this.releOk=false; return; }
+    this.releOk=true; this.set('rele',false);
+    if(this.desejada!==this.bomba){ this.bomba=this.desejada; if(this.bomba)this.bombaSeg=0; this.log(this.bomba?'Bomba LIGADA':'Bomba DESLIGADA'); }
+  },
+  async status(){
+    const nivel=this.tick(); const c=this.cfg;
+    const dist=nivel<0?-1:+(c.vazia-(c.vazia-c.cheia)*this.nivelF/100).toFixed(1);
+    return {nivel,distancia:dist,bomba:this.bomba,modo:this.modo,rele_ok:this.releOk!==false,bomba_seg:Math.round(this.bombaSeg/5*(this.bomba?1:0)),
+      rssi:-58,uptime:Math.round(this.up),agora:Math.floor(Date.now()/1000),alarmes:[...this.alm],cfg:{...c},eventos:this.ev.slice()};
+  },
+  async setConfig(p){
+    const n={...this.cfg}; for(const k in p) n[k]=parseFloat(p[k]);
+    if(n.liga<1||n.desliga>100||n.desliga-n.liga<5) throw new Error('liga/desliga inválidos (mín. 5 pontos de histerese)');
+    if(n.cheia<25||n.vazia<n.cheia+10) throw new Error('calibração inválida (cheia ≥ 25 e vazia > cheia + 10)');
+    if(n.tmax<1||n.tmax>240) throw new Error('tempo máximo inválido (1-240 min)');
+    this.cfg=n; this.log('Configuração alterada pela IHM'); return n;
+  },
+  async mode(m){ this.modo=m; this.log(m==='auto'?'Modo AUTOMATICO':'Modo MANUAL'); return {ok:true}; },
+  async pump(cmd){
+    if(this.modo==='auto') throw new Error('mude para o modo manual');
+    if(cmd==='on'){ if(this.alm.has('sensor')||this.alm.has('tempo')) throw new Error('bloqueado por alarme ativo');
+      if(this.nivelF>=this.cfg.desliga) throw new Error('nível já está alto'); this.desejada=true; } else this.desejada=false;
+    this.aplicar(); return {ok:true};
+  },
+  async ack(){ if(this.alm.has('tempo')){ this.alm.delete('tempo'); this.log('Alarme de tempo reconhecido'); } return {ok:true}; }
+};
+
+/* ---------- Estado e ciclo de leitura ---------- */
+let api = Real, S = null, online = false, hist = [], cfgDirty = false, timer = null, fails = 0;
+const useDemo = () => $('demo').checked;
+
+async function poll(){
+  api = useDemo() ? Demo : Real;
+  try{
+    if(!useDemo() && !$('ip').value.trim()) throw new Error('sem IP');
+    S = await api.status(); online = true; fails = 0;
+    hist.push({t:Date.now(), n:S.nivel}); if(hist.length>240) hist.shift();
+  }catch(e){ if(++fails>=2) online = false; }
+  render();
+}
+function restart(){ clearInterval(timer); hist=[]; S=null; fails=0; poll(); timer=setInterval(poll,1000); }
+
+/* ---------- Renderização ---------- */
+const fmtDur = s => { s=Math.max(0,Math.round(s)); const h=Math.floor(s/3600),m=Math.floor(s%3600/60); return h?`${h} h ${m} min`:m?`${m} min ${s%60} s`:`${s} s`; };
+const fmtEv = e => e.t>0 ? new Date(e.t*1000).toLocaleString('pt-BR') : 'ESP32 +'+fmtDur(e.u);
+
+function render(){
+  $('conn').className = 'badge ' + (online?'on':'off');
+  $('connTxt').textContent = online ? (useDemo()?'Demo':'Conectado') : 'Sem comunicação';
+  $('sConn').textContent = online ? 'Online' : 'Offline';
+  if(!S){ return; }
+  const stale = !online;
+  const alarms = S.alarmes||[];
+
+  // banner
+  const crit = alarms.filter(a=>ALM[a]&&ALM[a].sev==='crit');
+  const b = $('banner');
+  if(!online){ b.className='banner crit'; b.textContent='⚠ Sem comunicação com o controlador — os valores abaixo podem estar desatualizados.'; }
+  else if(crit.length){ b.className='banner crit'; b.textContent='⚠ '+crit.map(a=>ALM[a].nome).join(' • '); }
+  else if(alarms.length){ b.className='banner warn'; b.textContent='⚠ '+alarms.map(a=>ALM[a]?.nome||a).join(' • '); }
+  else b.className='banner hidden';
+
+  // nível / tanque
+  const n = S.nivel;
+  $('nivel').textContent = n<0 ? '--%' : n+'%';
+  $('nivel').style.color = stale ? 'var(--muted)' : n<0 ? 'var(--crit)' : n<=S.cfg.liga ? 'var(--crit)' : 'var(--text)';
+  $('dist').textContent = 'distância: ' + (S.distancia>0 ? S.distancia.toFixed(1)+' cm' : '-- cm');
+  const y = p => 210 - 2*p, h = n<0?0:2*n;
+  $('water').setAttribute('y', 210-h); $('water').setAttribute('height', h);
+  $('lnLiga').setAttribute('y1',y(S.cfg.liga)); $('lnLiga').setAttribute('y2',y(S.cfg.liga));
+  $('lnDesl').setAttribute('y1',y(S.cfg.desliga)); $('lnDesl').setAttribute('y2',y(S.cfg.desliga));
+  $('txLiga').setAttribute('y',y(S.cfg.liga)+4); $('txDesl').setAttribute('y',y(S.cfg.desliga)+4);
+
+  // bomba / modo
+  const on = S.bomba === true;
+  $('bombaBadge').className = 'badge ' + (S.bomba===null?'':on?'on':'off');
+  $('bombaTxt').textContent = 'Bomba: ' + (S.bomba===null?'--':on?'LIGADA':'desligada');
+  $('modoBadge').textContent = 'Modo: ' + (S.modo==='auto'?'Automático':'Manual');
+  $('sRele').textContent = S.rele_ok ? 'OK' : 'Sem resposta';
+  $('sTempo').textContent = on ? fmtDur(S.bomba_seg) : '—';
+  $('sRssi').textContent = S.rssi + ' dBm';
+  $('sUp').textContent = fmtDur(S.uptime);
+  $('cLeit').textContent = S.distancia>0 ? S.distancia.toFixed(1) : '--';
+
+  // controle
+  const manual = S.modo==='manual';
+  $('bAuto').className = !manual ? 'primary' : ''; $('bManual').className = manual ? 'primary' : '';
+  $('bOn').disabled = !manual || !online; $('bOff').disabled = !manual || !online;
+  $('manualHint').textContent = manual ? 'Modo manual ativo. Cuidado: a bomba não deve funcionar sem água na fonte.' : 'Mude para o modo Manual para acionar a bomba.';
+
+  // alarmes
+  const cnt = $('almCount'); cnt.textContent = alarms.length; cnt.classList.toggle('hidden', !alarms.length);
+  $('almList').innerHTML = alarms.length ? alarms.map(a=>{
+    const d = ALM[a]||{nome:a,desc:'',sev:'warn'};
+    return `<div class="alm ${d.sev==='warn'?'warn':''}"><div style="flex:1"><b>${d.nome}</b><span class="muted">${d.desc}</span></div>${a==='tempo'?'<button class="primary" data-ack>Reconhecer e liberar</button>':''}</div>`;
+  }).join('') : '<span class="good">✔ Nenhum alarme ativo</span>';
+  const evRow = e => `<tr><td class="muted" style="white-space:nowrap">${fmtEv(e)}</td><td>${e.m}</td></tr>`;
+  $('evAll').innerHTML = (S.eventos||[]).map(evRow).join('') || '<tr><td colspan=2 class="muted">Sem eventos</td></tr>';
+  $('evRecent').innerHTML = (S.eventos||[]).slice(0,5).map(evRow).join('') || '<tr><td class="muted">Sem eventos</td></tr>';
+
+  if(!cfgDirty) fillCfg();
+  drawTrend();
+}
+
+function fillCfg(){
+  const c = S.cfg;
+  $('cLiga').value=c.liga; $('cDesl').value=c.desliga; $('cTmax').value=c.tmax; $('cVazia').value=c.vazia; $('cCheia').value=c.cheia;
+}
+
+function drawTrend(){
+  const W=400,H=190,L=30,R=8,T=8,B=20, pw=W-L-R, ph=H-T-B;
+  const y = p => T + ph*(1-p/100);
+  let s = '';
+  for(const p of [0,25,50,75,100]) s += `<line x1="${L}" x2="${W-R}" y1="${y(p)}" y2="${y(p)}" stroke="var(--line)"/><text x="${L-4}" y="${y(p)+3}" font-size="9" fill="var(--muted)" text-anchor="end">${p}</text>`;
+  if(S){
+    s += `<line x1="${L}" x2="${W-R}" y1="${y(S.cfg.liga)}" y2="${y(S.cfg.liga)}" stroke="var(--warn)" stroke-dasharray="4 3"/>`;
+    s += `<line x1="${L}" x2="${W-R}" y1="${y(S.cfg.desliga)}" y2="${y(S.cfg.desliga)}" stroke="var(--ok)" stroke-dasharray="4 3"/>`;
+  }
+  const pts = hist.filter(p=>p.n>=0);
+  if(pts.length>1){
+    const t1=hist[hist.length-1].t, t0=Math.min(hist[0].t, t1-60000);
+    const x = t => L + pw*(t-t0)/(t1-t0);
+    s += `<polyline fill="none" stroke="var(--water)" stroke-width="2" points="${pts.map(p=>x(p.t).toFixed(1)+','+y(p.n).toFixed(1)).join(' ')}"/>`;
+  } else s += `<text x="${W/2}" y="${H/2}" font-size="12" fill="var(--muted)" text-anchor="middle">aguardando leituras…</text>`;
+  $('trend').innerHTML = s;
+}
+
+/* ---------- Ações ---------- */
+function flash(el, text, ok){ el.textContent=text; el.className=ok?'good':'err'; setTimeout(()=>{ if(el.textContent===text) el.textContent=''; }, 5000); }
+async function act(fn, el, okText){
+  try{ await fn(); if(okText) flash(el, okText, true); await poll(); }
+  catch(e){ flash(el, '✖ '+(e.message||'falha de comunicação'), false); }
+}
+$('bAuto').onclick   = () => act(()=>api.mode('auto'), $('msg'), 'Modo automático ativado');
+$('bManual').onclick = () => act(()=>api.mode('manual'), $('msg'), 'Modo manual ativado');
+$('bOn').onclick  = () => { if(confirm('Ligar a bomba agora? Confirme que há água na fonte.')) act(()=>api.pump('on'), $('msg'), 'Comando enviado: ligar'); };
+$('bOff').onclick = () => act(()=>api.pump('off'), $('msg'), 'Comando enviado: desligar');
+document.addEventListener('click', e => { if(e.target.matches('[data-ack]')) act(()=>api.ack(), $('msg')); });
+
+for(const id of ['cLiga','cDesl','cTmax','cVazia','cCheia']) $(id).oninput = () => cfgDirty = true;
+$('calVazia').onclick = () => { if(S&&S.distancia>0){ $('cVazia').value=S.distancia.toFixed(1); cfgDirty=true; } };
+$('calCheia').onclick = () => { if(S&&S.distancia>0){ $('cCheia').value=S.distancia.toFixed(1); cfgDirty=true; } };
+$('cReload').onclick = () => { cfgDirty=false; if(S) fillCfg(); $('cMsg').textContent=''; };
+$('cSave').onclick = () => {
+  const c = {liga:$('cLiga').value, desliga:$('cDesl').value, tmax:$('cTmax').value, vazia:$('cVazia').value, cheia:$('cCheia').value};
+  if(+c.desliga - +c.liga < 5) return flash($('cMsg'),'✖ Mantenha ao menos 5 pontos entre liga e desliga',false);
+  act(async()=>{ await api.setConfig(c); cfgDirty=false; }, $('cMsg'), '✔ Configuração salva no controlador');
+};
+
+/* ---------- Abas, conexão, demo ---------- */
+document.querySelectorAll('#tabs button').forEach(btn => btn.onclick = () => {
+  document.querySelectorAll('#tabs button').forEach(x=>x.classList.toggle('active', x===btn));
+  for(const t of ['painel','controle','config','alarmes']) $('tab-'+t).classList.toggle('hidden', t!==btn.dataset.tab);
+});
+try{ $('ip').value = localStorage.getItem('ihm_ip') || ''; $('demo').checked = localStorage.getItem('ihm_demo')==='1'; }catch(e){}
+$('btnConn').onclick = () => { try{ localStorage.setItem('ihm_ip', $('ip').value.trim()); }catch(e){} $('demo').checked=false; syncDemo(); restart(); };
+$('demo').onchange = () => { syncDemo(); restart(); };
+function syncDemo(){ $('demoBox').classList.toggle('hidden', !useDemo()); try{ localStorage.setItem('ihm_demo', useDemo()?'1':'0'); }catch(e){} }
+$('dSensor').onclick = () => { Demo.sensorFalha = !Demo.sensorFalha; $('dSensor').textContent = Demo.sensorFalha ? 'Restaurar sensor' : 'Simular falha do sensor'; };
+$('dRele').onclick   = () => { Demo.releFalha = !Demo.releFalha; $('dRele').textContent = Demo.releFalha ? 'Restaurar relé' : 'Simular falha do relé'; };
+$('dConsumo').onclick = () => { Demo.nivelF = Math.max(0, Demo.nivelF-20); };
+
+syncDemo(); restart();
+</script>
+</body>
+</html>
